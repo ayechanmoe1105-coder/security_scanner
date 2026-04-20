@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Scan History — VAPT Platform{% endblock %}
+{% block page_title %}Scan History{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <span><i class="fas fa-clock-rotate-left"></i> All Scans</span>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="historySearch" class="form-input" style="width:200px"
+             placeholder="Search target..." oninput="filterHistory()" />
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div id="historyContainer">
+      <div class="empty-state">
+        <i class="fas fa-clock-rotate-left"></i>
+        <p>No scan history yet. Run your first scan from the Scanner page.</p>
+        <a href="{{ url_for('scanner') }}" class="btn btn-primary mt-2">Launch Scanner</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal" style="display:none">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <i class="fas fa-file-shield"></i>
+      <h3 id="detailTitle">Scan Details</h3>
+    </div>
+    <div class="modal-body" id="detailBody" style="max-height:70vh;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeDetail()">Close</button>
+      <button class="btn btn-primary" id="detailDownloadBtn">
+        <i class="fas fa-file-pdf"></i> Download PDF
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allHistory = [];
+let selectedEntry = null;
+
+document.addEventListener("DOMContentLoaded", loadHistory);
+
+function loadHistory() {
+  fetch("/api/history")
+    .then(r => {
+      if (!r.ok) throw new Error("Failed to load history");
+      return r.json();
+    })
+    .then(data => {
+      allHistory = data;
+      renderHistory(data);
+    })
+    .catch(() => {
+      document.getElementById("historyContainer").innerHTML = `<div class="empty-state">
+        <i class="fas fa-triangle-exclamation"></i>
+        <p>Could not load history. Check that the app is running and refresh.</p>
+      </div>`;
+    });
+}
+
+function filterHistory() {
+  const q = document.getElementById("historySearch").value.toLowerCase();
+  renderHistory(allHistory.filter(s => s.target.toLowerCase().includes(q) ||
+    s.type.toLowerCase().includes(q)));
+}
+
+function renderHistory(data) {
+  const c = document.getElementById("historyContainer");
+  if (!data.length) {
+    c.innerHTML = `<div class="empty-state"><i class="fas fa-search"></i><p>No results found.</p></div>`;
+    return;
+  }
+  c.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Target</th><th>Scan Type</th><th>Risk</th>
+          <th>Findings</th><th>Date & Time</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${data.map(s => `
+          <tr>
+            <td>${s.id}</td>
+            <td><code>${s.target}</code></td>
+            <td><span class="badge badge-type">${s.type}</span></td>
+            <td>${riskBadge(s.overall_risk)}</td>
+            <td><strong>${s.total_findings}</strong></td>
+            <td>${s.timestamp}</td>
+            <td>
+              <button class="btn btn-sm btn-primary" onclick="viewDetail(${s.id})">
+                <i class="fas fa-eye"></i> View
+              </button>
+            </td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+}
+
+function viewDetail(id) {
+  fetch(`/api/history/${id}`)
+    .then(r => r.json())
+    .then(entry => {
+      selectedEntry = entry;
+      document.getElementById("detailTitle").textContent = `${entry.type}: ${entry.target}`;
+      document.getElementById("detailBody").innerHTML = buildDetailHTML(entry.result);
+      document.getElementById("detailModal").style.display = "flex";
+      document.getElementById("detailDownloadBtn").onclick = () => downloadDetail(entry.result);
+    });
+}
+
+function buildDetailHTML(r) {
+  const sc = r.severity_count || {};
+  const badges = ['CRITICAL','HIGH','MEDIUM','LOW'].map(s =>
+    `<span class="severity-badge sev-${s.toLowerCase()}">${s}: ${sc[s]||0}</span>`).join(" ");
+
+  let html = `<div style="margin-bottom:12px">${badges}</div>`;
+
+  if (r.open_ports && r.open_ports.length) {
+    html += `<h4 style="margin:12px 0 6px">Open Ports</h4>
+      <table class="data-table">
+        <thead><tr><th>Port</th><th>Service</th><th>Risk</th></tr></thead>
+        <tbody>${r.open_ports.map(p =>
+          `<tr><td><code>${p.port}</code></td><td>${p.service}</td><td>${riskBadge(p.risk)}</td></tr>`
+        ).join("")}</tbody>
+      </table>`;
+  }
+
+  const findings = r.findings || [];
+  if (findings.length) {
+    html += `<h4 style="margin:12px 0 6px">Vulnerability Findings (${findings.length})</h4>`;
+    findings.slice(0, 20).forEach(f => {
+      html += `<div class="finding-card sev-border-${(f.severity||'INFO').toLowerCase()}" style="margin-bottom:8px">
+        <div class="finding-header">
+          <div class="finding-title">${f.type || "Finding"}</div>
+          ${riskBadge(f.severity)}
+        </div>
+        <div class="finding-body">
+          ${f.detail || f.description || ""}<br/>
+          ${f.remediation ? `<em style="color:var(--text-muted)">Fix: ${f.remediation}</em>` : ""}
+        </div>
+      </div>`;
+    });
+  }
+
+  return html;
+}
+
+function closeDetail() {
+  document.getElementById("detailModal").style.display = "none";
+}
+
+async function downloadDetail(result) {
+  showNotification("Generating PDF...", "info");
+  const resp = await fetch("/api/report/pdf", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({scan_data: result})
+  });
+  if (!resp.ok) { showNotification("Failed to generate report.", "error"); return; }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "vapt_report.pdf"; a.click();
+  URL.revokeObjectURL(url);
+  showNotification("PDF downloaded!", "success");
+}
+
+function riskBadge(risk) {
+  const cls = {CRITICAL:"sev-critical",HIGH:"sev-high",MEDIUM:"sev-medium",LOW:"sev-low",INFO:"sev-info"};
+  return `<span class="severity-badge ${cls[risk]||'sev-info'}">${risk||'INFO'}</span>`;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — VAPT Platform{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Hero Banner -->
+<div class="hero-banner">
+  <div class="hero-content">
+    <div class="hero-icon"><i class="fas fa-shield-halved"></i></div>
+    <div>
+      <h1 class="hero-title">Vulnerability Assessment &amp; Penetration Testing</h1>
+      <p class="hero-sub">Professional security assessment platform for authorized testing. Identify risks before attackers do.</p>
+    </div>
+  </div>
+  <div class="hero-actions">
+    <a href="{{ url_for('scanner') }}" class="btn btn-primary btn-lg">
+      <i class="fas fa-radar"></i> Launch Scanner
+    </a>
+  </div>
+</div>
+
+<!-- Stats Row -->
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card">
+    <div class="stat-icon purple"><i class="fas fa-clock-rotate-left"></i></div>
+    <div class="stat-info">
+      <div class="stat-value" id="totalScans">0</div>
+      <div class="stat-label">Total Scans</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon red"><i class="fas fa-skull-crossbones"></i></div>
+    <div class="stat-info">
+      <div class="stat-value" id="criticalCount">0</div>
+      <div class="stat-label">Critical Findings</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon orange"><i class="fas fa-bug"></i></div>
+    <div class="stat-info">
+      <div class="stat-value" id="highCount">0</div>
+      <div class="stat-label">High Severity</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon green"><i class="fas fa-circle-check"></i></div>
+    <div class="stat-info">
+      <div class="stat-value" id="resolvedCount">-</div>
+      <div class="stat-label">Scan Types</div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Scan + Capabilities -->
+<div class="two-col-grid">
+  <!-- Quick Scan -->
+  <div class="card">
+    <div class="card-header">
+      <i class="fas fa-bolt"></i> Quick Scan
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">Target (IP / Hostname / URL)</label>
+        <input type="text" id="quickTarget" class="form-input"
+               placeholder="e.g. 192.168.1.1 or example.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Scan Type</label>
+        <div class="scan-type-grid">
+          <label class="scan-type-card active" data-type="ports">
+            <input type="radio" name="quickScanType" value="ports" checked hidden />
+            <i class="fas fa-network-wired"></i>
+            <span>Port Scan</span>
+          </label>
+          <label class="scan-type-card" data-type="web">
+            <input type="radio" name="quickScanType" value="web" hidden />
+            <i class="fas fa-globe"></i>
+            <span>Web Scan</span>
+          </label>
+          <label class="scan-type-card" data-type="ssl">
+            <input type="radio" name="quickScanType" value="ssl" hidden />
+            <i class="fas fa-lock"></i>
+            <span>SSL Check</span>
+          </label>
+          <label class="scan-type-card" data-type="dns">
+            <input type="radio" name="quickScanType" value="dns" hidden />
+            <i class="fas fa-server"></i>
+            <span>DNS Recon</span>
+          </label>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-full" id="quickScanBtn" onclick="startQuickScan()">
+        <i class="fas fa-play"></i> Start Scan
+      </button>
+      <div id="quickScanStatus" class="scan-status hidden"></div>
+    </div>
+  </div>
+
+  <!-- Capabilities -->
+  <div class="card">
+    <div class="card-header"><i class="fas fa-list-check"></i> Platform Capabilities</div>
+    <div class="card-body">
+      <div class="capability-list">
+        <div class="capability-item">
+          <div class="cap-icon purple"><i class="fas fa-network-wired"></i></div>
+          <div>
+            <div class="cap-title">Port Scanner</div>
+            <div class="cap-desc">TCP port scanning with service fingerprinting and risk assessment</div>
+          </div>
+        </div>
+        <div class="capability-item">
+          <div class="cap-icon red"><i class="fas fa-bug"></i></div>
+          <div>
+            <div class="cap-title">Vulnerability Assessment</div>
+            <div class="cap-desc">CVE matching, EternalBlue, BlueKeep, default credentials</div>
+          </div>
+        </div>
+        <div class="capability-item">
+          <div class="cap-icon blue"><i class="fas fa-globe"></i></div>
+          <div>
+            <div class="cap-title">Web App Scanner</div>
+            <div class="cap-desc">SQLi, XSS, security headers, sensitive file exposure (OWASP Top 10)</div>
+          </div>
+        </div>
+        <div class="capability-item">
+          <div class="cap-icon green"><i class="fas fa-lock"></i></div>
+          <div>
+            <div class="cap-title">SSL/TLS Analyzer</div>
+            <div class="cap-desc">Certificate validity, weak ciphers, TLS version, expiry alerts</div>
+          </div>
+        </div>
+        <div class="capability-item">
+          <div class="cap-icon orange"><i class="fas fa-server"></i></div>
+          <div>
+            <div class="cap-title">DNS Reconnaissance</div>
+            <div class="cap-desc">DNS records, subdomain enumeration, SPF/DMARC, zone transfer</div>
+          </div>
+        </div>
+        <div class="capability-item">
+          <div class="cap-icon cyan"><i class="fas fa-file-pdf"></i></div>
+          <div>
+            <div class="cap-title">PDF / JSON Reports</div>
+            <div class="cap-desc">Professional security assessment reports with remediation guidance</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Scan History -->
+<div class="card mt-4">
+  <div class="card-header">
+    <span><i class="fas fa-clock-rotate-left"></i> Recent Scans</span>
+    <a href="{{ url_for('history_page') }}" class="btn btn-sm btn-ghost">View All</a>
+  </div>
+  <div class="card-body p-0">
+    <div id="recentScans">
+      <div class="empty-state">
+        <i class="fas fa-radar"></i>
+        <p>No scans yet. Start your first scan above.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  loadDashboardStats();
+
+  document.querySelectorAll(".scan-type-card").forEach(card => {
+    card.addEventListener("click", function() {
+      document.querySelectorAll(".scan-type-card").forEach(c => c.classList.remove("active"));
+      this.classList.add("active");
+    });
+  });
+});
+
+function loadDashboardStats() {
+  fetch("/api/history")
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById("totalScans").textContent = data.length;
+      let crit = 0, high = 0;
+      data.forEach(s => {
+        if (s.overall_risk === "CRITICAL") crit++;
+        else if (s.overall_risk === "HIGH") high++;
+      });
+      document.getElementById("criticalCount").textContent = crit;
+      document.getElementById("highCount").textContent = high;
+      document.getElementById("resolvedCount").textContent = "4";
+      renderRecentScans(data.slice(0, 5));
+    });
+}
+
+function renderRecentScans(scans) {
+  const container = document.getElementById("recentScans");
+  if (!scans.length) return;
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Target</th><th>Type</th><th>Risk</th><th>Findings</th><th>Time</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${scans.map(s => `
+          <tr>
+            <td><code>${s.target}</code></td>
+            <td><span class="badge badge-type">${s.type}</span></td>
+            <td>${riskBadge(s.overall_risk)}</td>
+            <td>${s.total_findings}</td>
+            <td>${s.timestamp}</td>
+            <td><a href="{{ url_for('history_page') }}" class="btn btn-sm btn-ghost">View</a></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>`;
+}
+
+function riskBadge(risk) {
+  const classes = {CRITICAL:"sev-critical",HIGH:"sev-high",MEDIUM:"sev-medium",LOW:"sev-low",INFO:"sev-info"};
+  return `<span class="severity-badge ${classes[risk]||'sev-info'}">${risk||'N/A'}</span>`;
+}
+
+function startQuickScan() {
+  const target = document.getElementById("quickTarget").value.trim();
+  const type = document.querySelector("input[name='quickScanType']:checked").value;
+  if (!target) {
+    showNotification("Please enter a target.", "error");
+    return;
+  }
+  window.location.href = "{{ url_for('scanner') }}?target=" + encodeURIComponent(target) + "&type=" + type;
+}
+</script>
+{% endblock %}

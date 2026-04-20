@@ -1,0 +1,589 @@
+{% extends "base.html" %}
+{% block title %}Scanner — VAPT Platform{% endblock %}
+{% block page_title %}Security Scanner{% endblock %}
+
+{% block content %}
+<div class="scanner-layout">
+  <!-- Left: Scan Config Panel -->
+  <div class="scan-config-panel">
+    <div class="card">
+      <div class="card-header"><i class="fas fa-sliders"></i> Scan Configuration</div>
+      <div class="card-body">
+
+        <!-- Scan Mode Tabs -->
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="ports" onclick="switchMode('ports')">
+            <i class="fas fa-network-wired"></i> Ports
+          </button>
+          <button class="mode-tab" data-mode="web" onclick="switchMode('web')">
+            <i class="fas fa-globe"></i> Web
+          </button>
+          <button class="mode-tab" data-mode="ssl" onclick="switchMode('ssl')">
+            <i class="fas fa-lock"></i> SSL
+          </button>
+          <button class="mode-tab" data-mode="dns" onclick="switchMode('dns')">
+            <i class="fas fa-server"></i> DNS
+          </button>
+          <button class="mode-tab" data-mode="full" onclick="switchMode('full')">
+            <i class="fas fa-crosshairs"></i> Full
+          </button>
+        </div>
+
+        <!-- Target Input -->
+        <div class="form-group mt-3">
+          <label class="form-label">Target</label>
+          <div class="input-with-icon">
+            <i class="fas fa-crosshairs"></i>
+            <input type="text" id="scanTarget" class="form-input"
+                   placeholder="IP, hostname, or URL..." />
+          </div>
+        </div>
+
+        <!-- Port Scan Options -->
+        <div id="portOptions" class="scan-options">
+          <div class="form-group">
+            <label class="form-label">Port Range</label>
+            <select id="portRange" class="form-select">
+              <option value="common">Common Ports (Top 25)</option>
+              <option value="top100">Top 100 Ports</option>
+              <option value="full">Full Scan (1–1024)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Web Scan Options -->
+        <div id="webOptions" class="scan-options hidden">
+          <div class="info-box">
+            <i class="fas fa-info-circle"></i>
+            Scans for SQLi, XSS, missing security headers, and exposed sensitive files.
+          </div>
+        </div>
+
+        <!-- SSL Options -->
+        <div id="sslOptions" class="scan-options hidden">
+          <div class="form-group">
+            <label class="form-label">SSL Port</label>
+            <input type="number" id="sslPort" class="form-input" value="443" min="1" max="65535" />
+          </div>
+        </div>
+
+        <!-- DNS Options -->
+        <div id="dnsOptions" class="scan-options hidden">
+          <div class="form-group">
+            <label class="form-label">Options</label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="enumSubdomains" checked />
+              <span>Enumerate Subdomains</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Full Scan Options -->
+        <div id="fullOptions" class="scan-options hidden">
+          <div class="info-box warning">
+            <i class="fas fa-triangle-exclamation"></i>
+            Full VAPT: Port scan + Web scan + SSL check + DNS recon. May take 1–3 minutes.
+          </div>
+        </div>
+
+        <button id="startScanBtn" class="btn btn-primary btn-full mt-3" onclick="startScan()">
+          <i class="fas fa-play"></i> Start Scan
+        </button>
+        <button id="stopScanBtn" class="btn btn-danger btn-full mt-2 hidden" onclick="stopScan()">
+          <i class="fas fa-stop"></i> Cancel
+        </button>
+      </div>
+    </div>
+
+    <!-- Scan Progress -->
+    <div class="card mt-3" id="progressCard" style="display:none">
+      <div class="card-header"><i class="fas fa-spinner fa-spin"></i> Scan Progress</div>
+      <div class="card-body">
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" id="scanProgressBar" style="width:0%"></div>
+        </div>
+        <div class="scan-log" id="scanLog"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Results Panel -->
+  <div class="results-panel">
+    <!-- Welcome / Idle state -->
+    <div id="idleState" class="card center-card">
+      <div class="idle-content">
+        <div class="idle-icon"><i class="fas fa-radar"></i></div>
+        <h2>Ready to Scan</h2>
+        <p>Configure your scan on the left and click <strong>Start Scan</strong> to begin.</p>
+        <div class="feature-chips">
+          <span class="chip"><i class="fas fa-network-wired"></i> Port Scanner</span>
+          <span class="chip"><i class="fas fa-globe"></i> Web App Scanner</span>
+          <span class="chip"><i class="fas fa-lock"></i> SSL Analyzer</span>
+          <span class="chip"><i class="fas fa-server"></i> DNS Recon</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scanning state -->
+    <div id="scanningState" class="card center-card hidden">
+      <div class="scanning-content">
+        <div class="scanner-animation">
+          <div class="scan-ring ring1"></div>
+          <div class="scan-ring ring2"></div>
+          <div class="scan-ring ring3"></div>
+          <i class="fas fa-crosshairs scan-center-icon"></i>
+        </div>
+        <h2 id="scanningTarget">Scanning...</h2>
+        <p id="scanningStatus">Initializing scan...</p>
+      </div>
+    </div>
+
+    <!-- Results state -->
+    <div id="resultsState" style="display:none">
+      <!-- Summary bar -->
+      <div class="results-summary-bar" id="resultsSummaryBar"></div>
+
+      <!-- Tabs -->
+      <div class="result-tabs" id="resultTabs"></div>
+
+      <!-- Tab Content -->
+      <div id="resultContent"></div>
+
+      <!-- Download Actions -->
+      <div class="card mt-3">
+        <div class="card-body" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <span style="font-weight:600;color:var(--text-secondary)">
+            <i class="fas fa-download"></i> Export Report:
+          </span>
+          <button class="btn btn-primary" onclick="downloadReport('pdf')">
+            <i class="fas fa-file-pdf"></i> PDF Report
+          </button>
+          <button class="btn btn-ghost" onclick="downloadReport('json')">
+            <i class="fas fa-file-code"></i> JSON Data
+          </button>
+          <button class="btn btn-ghost" onclick="newScan()">
+            <i class="fas fa-plus"></i> New Scan
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const VALID_MODES = ["ports", "web", "ssl", "dns", "full"];
+let socket = null;
+let currentScanId = null;
+let currentResult = null;
+let currentMode = "ports";
+let progressValue = 0;
+
+function initScannerSocket() {
+  if (typeof io === "undefined") {
+    console.warn("Socket.IO client not loaded; live scan updates disabled.");
+    return;
+  }
+  try {
+    socket = io();
+  } catch (e) {
+    console.warn("Socket.IO connect failed:", e);
+    return;
+  }
+  socket.on("connected", () => console.log("Socket connected"));
+  socket.on("scan_event", data => {
+  if (data.scan_id !== currentScanId) return;
+  if (data.event === "status") appendLog(data.data);
+  else if (data.event === "port_found") {
+    appendLog(`<span class="log-open">OPEN</span> Port ${data.data.port} (${data.data.service}) — ${data.data.risk}`);
+    progressValue = Math.min(progressValue + 3, 85);
+    updateProgress(progressValue);
+  } else if (data.event === "path_found") {
+    appendLog(`<span class="log-warn">FOUND</span> ${data.data.url} [${data.data.status_code}]`);
+  } else if (data.event === "subdomain_found") {
+    appendLog(`<span class="log-info">SUB</span> ${data.data.subdomain} → ${data.data.ip}`);
+  }
+  });
+
+  socket.on("scan_complete", data => {
+    if (data.scan_id !== currentScanId) return;
+    updateProgress(100);
+    currentResult = data.result;
+    setTimeout(() => renderResults(data.result), 400);
+  });
+
+  socket.on("scan_error", data => {
+    if (data.scan_id !== currentScanId) return;
+    showScanError(data.error);
+  });
+}
+
+function switchMode(mode) {
+  if (!VALID_MODES.includes(mode)) return;
+  currentMode = mode;
+  document.querySelectorAll(".mode-tab").forEach(t => t.classList.remove("active"));
+  const tab = document.querySelector(`[data-mode="${mode}"]`);
+  if (tab) tab.classList.add("active");
+  document.querySelectorAll(".scan-options").forEach(o => o.classList.add("hidden"));
+  const opts = document.getElementById(`${mode}Options`);
+  if (opts) opts.classList.remove("hidden");
+
+  const placeholders = {
+    ports: "192.168.1.1 or example.com",
+    web: "http://example.com or https://target.com",
+    ssl: "example.com",
+    dns: "example.com",
+    full: "example.com or 192.168.1.1",
+  };
+  const st = document.getElementById("scanTarget");
+  if (st) st.placeholder = placeholders[mode];
+}
+
+function bootScannerPage() {
+  initScannerSocket();
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetEl = document.getElementById("scanTarget");
+  if (targetEl && urlParams.get("target")) targetEl.value = urlParams.get("target");
+  const t = urlParams.get("type");
+  if (t) switchMode(t);
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootScannerPage);
+} else {
+  bootScannerPage();
+}
+
+function startScan() {
+  const target = document.getElementById("scanTarget").value.trim();
+  if (!target) { showNotification("Please enter a target.", "error"); return; }
+
+  showScanningState(target);
+  progressValue = 5;
+  updateProgress(5);
+
+  const endpoints = {
+    ports: "/api/scan/ports",
+    web: "/api/scan/web",
+    ssl: "/api/scan/ssl",
+    dns: "/api/scan/dns",
+    full: "/api/scan/full",
+  };
+
+  const bodies = {
+    ports: { target, port_range: document.getElementById("portRange").value },
+    web: { target },
+    ssl: { target, port: parseInt(document.getElementById("sslPort").value) },
+    dns: { target, enumerate_subdomains: document.getElementById("enumSubdomains").checked },
+    full: { target },
+  };
+
+  fetch(endpoints[currentMode], {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(bodies[currentMode])
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      currentScanId = data.scan_id;
+      appendLog(`Scan started (ID: ${data.scan_id})`);
+    } else {
+      showScanError(data.error);
+    }
+  });
+}
+
+function showScanningState(target) {
+  document.getElementById("idleState").classList.add("hidden");
+  document.getElementById("resultsState").style.display = "none";
+  document.getElementById("scanningState").classList.remove("hidden");
+  document.getElementById("scanningTarget").textContent = `Scanning: ${target}`;
+  document.getElementById("progressCard").style.display = "block";
+  document.getElementById("startScanBtn").classList.add("hidden");
+  document.getElementById("stopScanBtn").classList.remove("hidden");
+  document.getElementById("scanLog").innerHTML = "";
+}
+
+function stopScan() { newScan(); }
+
+function newScan() {
+  currentScanId = null;
+  currentResult = null;
+  progressValue = 0;
+  updateProgress(0);
+  document.getElementById("idleState").classList.remove("hidden");
+  document.getElementById("scanningState").classList.add("hidden");
+  document.getElementById("resultsState").style.display = "none";
+  document.getElementById("progressCard").style.display = "none";
+  document.getElementById("startScanBtn").classList.remove("hidden");
+  document.getElementById("stopScanBtn").classList.add("hidden");
+}
+
+function updateProgress(pct) {
+  document.getElementById("scanProgressBar").style.width = pct + "%";
+}
+
+function appendLog(msg) {
+  const log = document.getElementById("scanLog");
+  log.innerHTML += `<div class="log-line">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+  log.scrollTop = log.scrollHeight;
+  document.getElementById("scanningStatus").textContent = msg.replace(/<[^>]+>/g, "");
+}
+
+function showScanError(err) {
+  document.getElementById("scanningState").classList.add("hidden");
+  document.getElementById("idleState").classList.remove("hidden");
+  document.getElementById("startScanBtn").classList.remove("hidden");
+  document.getElementById("stopScanBtn").classList.add("hidden");
+  showNotification("Scan error: " + err, "error");
+}
+
+function renderResults(result) {
+  document.getElementById("scanningState").classList.add("hidden");
+  document.getElementById("startScanBtn").classList.remove("hidden");
+  document.getElementById("stopScanBtn").classList.add("hidden");
+
+  const rs = document.getElementById("resultsState");
+  rs.style.display = "block";
+
+  // Summary bar
+  const sc = result.severity_count || {};
+  document.getElementById("resultsSummaryBar").innerHTML = `
+    <div class="summary-bar-inner">
+      <div class="sum-item">
+        <div class="sum-target"><i class="fas fa-crosshairs"></i> ${result.target || result.domain || "N/A"}</div>
+        <div class="sum-risk">${riskBadgeLg(result.overall_risk)}</div>
+      </div>
+      <div class="sum-counts">
+        ${['CRITICAL','HIGH','MEDIUM','LOW','INFO'].map(s =>
+          `<div class="sum-count ${s.toLowerCase()}">
+            <div class="sum-num">${sc[s]||0}</div>
+            <div class="sum-sev">${s}</div>
+          </div>`).join("")}
+      </div>
+    </div>`;
+
+  // Build tabs
+  const tabs = [];
+  const tabContent = {};
+
+  if (result.open_ports) {
+    tabs.push({id:"ports", icon:"fas fa-network-wired", label:`Ports (${result.open_count||0})`});
+    tabContent.ports = renderPortsTab(result);
+  }
+  if (result.findings && result.findings.length) {
+    tabs.push({id:"vulns", icon:"fas fa-bug", label:`Findings (${result.findings.length})`});
+    tabContent.vulns = renderFindingsTab(result.findings);
+  } else if (!result.open_ports) {
+    tabs.push({id:"vulns", icon:"fas fa-bug", label:"Findings"});
+    tabContent.vulns = renderFindingsTab([]);
+  }
+  if (result.certificate) {
+    tabs.push({id:"ssl", icon:"fas fa-lock", label:"SSL/TLS"});
+    tabContent.ssl = renderSSLTab(result);
+  }
+  if (result.dns_records || result.subdomains !== undefined) {
+    tabs.push({id:"dns", icon:"fas fa-server", label:"DNS"});
+    tabContent.dns = renderDNSTab(result);
+  }
+  if (result.web_scan) {
+    tabs.push({id:"web", icon:"fas fa-globe", label:"Web"});
+    tabContent.web = renderFindingsTab((result.web_scan||{}).findings||[]);
+  }
+
+  const tabHtml = `<div class="result-tabs-inner">${tabs.map((t,i) =>
+    `<button class="result-tab ${i===0?'active':''}" onclick="switchResultTab('${t.id}')" id="rtab-${t.id}">
+      <i class="${t.icon}"></i> ${t.label}
+    </button>`).join("")}</div>`;
+  document.getElementById("resultTabs").innerHTML = tabHtml;
+
+  window._tabContent = tabContent;
+  const firstId = tabs[0]?.id;
+  if (firstId) {
+    document.getElementById("resultContent").innerHTML = tabContent[firstId] || "";
+  }
+}
+
+function switchResultTab(id) {
+  document.querySelectorAll(".result-tab").forEach(t => t.classList.remove("active"));
+  document.getElementById(`rtab-${id}`).classList.add("active");
+  document.getElementById("resultContent").innerHTML = window._tabContent[id] || "";
+}
+
+function renderPortsTab(result) {
+  if (!result.open_ports || !result.open_ports.length) {
+    return `<div class="card"><div class="empty-state"><i class="fas fa-lock"></i><p>No open ports found.</p></div></div>`;
+  }
+  return `<div class="card">
+    <div class="card-header"><i class="fas fa-network-wired"></i> Open Ports — ${result.ip || result.target}</div>
+    <div class="card-body p-0">
+      <table class="data-table">
+        <thead><tr><th>Port</th><th>Service</th><th>Risk</th><th>Description</th><th>Banner</th></tr></thead>
+        <tbody>
+          ${result.open_ports.map(p => `
+            <tr>
+              <td><code>${p.port}</code></td>
+              <td>${p.service}</td>
+              <td>${riskBadge(p.risk)}</td>
+              <td style="max-width:240px;font-size:12px">${p.description||''}</td>
+              <td style="max-width:160px;font-size:11px;font-family:monospace;color:var(--text-muted)">${(p.banner||'').slice(0,80)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div style="padding:8px 0;color:var(--text-muted);font-size:13px">
+    <i class="fas fa-info-circle"></i>
+    Scanned ${result.total_ports_scanned} ports in ${result.elapsed}s &mdash;
+    ${result.open_count} open, ${result.closed_count} closed/filtered.
+  </div>`;
+}
+
+function renderFindingsTab(findings) {
+  if (!findings.length) {
+    return `<div class="card"><div class="empty-state">
+      <i class="fas fa-shield-check"></i>
+      <p>No vulnerabilities found for this scan module.</p>
+    </div></div>`;
+  }
+  return findings.map(f => `
+    <div class="finding-card sev-border-${(f.severity||'INFO').toLowerCase()}">
+      <div class="finding-header">
+        <div class="finding-title">
+          <i class="fas fa-triangle-exclamation"></i>
+          ${f.type || "Finding"}
+          ${f.cve ? `<span class="cve-tag">${f.cve}</span>` : ""}
+          ${f.port ? `<span class="port-tag">Port ${f.port}</span>` : ""}
+        </div>
+        <div class="finding-meta">
+          ${riskBadge(f.severity)}
+          ${f.cvss ? `<span class="cvss-score">CVSS ${f.cvss}</span>` : ""}
+        </div>
+      </div>
+      <div class="finding-body">
+        ${f.description ? `<div class="finding-row"><span class="finding-key">Description</span><span>${f.description}</span></div>` : ""}
+        ${f.detail ? `<div class="finding-row"><span class="finding-key">Detail</span><span>${f.detail}</span></div>` : ""}
+        ${f.evidence ? `<div class="finding-row"><span class="finding-key">Evidence</span><code class="evidence-code">${f.evidence}</code></div>` : ""}
+        ${f.url ? `<div class="finding-row"><span class="finding-key">URL</span><code class="evidence-code">${f.url}</code></div>` : ""}
+        ${f.payload ? `<div class="finding-row"><span class="finding-key">Payload</span><code class="evidence-code payload">${escapeHtml(f.payload)}</code></div>` : ""}
+        ${f.remediation ? `<div class="finding-row remediation"><span class="finding-key"><i class="fas fa-wrench"></i> Fix</span><span>${f.remediation}</span></div>` : ""}
+      </div>
+    </div>`).join("");
+}
+
+function renderSSLTab(result) {
+  const cert = result.certificate || {};
+  const tls = result.tls_info || {};
+  const days = cert.days_remaining;
+  const daysClass = days < 0 ? "sev-critical" : days < 30 ? "sev-high" : "sev-low";
+  return `
+    <div class="two-col-grid">
+      <div class="card">
+        <div class="card-header"><i class="fas fa-certificate"></i> Certificate Details</div>
+        <div class="card-body">
+          ${kvRow("Common Name", cert.subject_cn)}
+          ${kvRow("Issuer", cert.issuer_cn)}
+          ${kvRow("Issuer Org", cert.issuer_org)}
+          ${kvRow("Valid From", cert.not_before)}
+          ${kvRow("Valid Until", cert.not_after)}
+          ${kvRow("Days Remaining", `<span class="severity-badge ${daysClass}">${days} days</span>`)}
+          ${kvRow("SAN", (cert.san||[]).slice(0,5).join(", "))}
+          ${kvRow("Serial", cert.serial_number)}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><i class="fas fa-shield-halved"></i> TLS Configuration</div>
+        <div class="card-body">
+          ${kvRow("Protocol", tls.protocol)}
+          ${kvRow("Cipher Suite", tls.cipher_suite)}
+          ${kvRow("Key Bits", tls.cipher_bits)}
+          <hr style="border-color:var(--border)" />
+          <div style="font-weight:600;margin-bottom:8px">Findings</div>
+          ${renderFindingsTab(result.findings||[])}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderDNSTab(result) {
+  const records = result.dns_records || {};
+  return `
+    <div class="two-col-grid">
+      <div class="card">
+        <div class="card-header"><i class="fas fa-database"></i> DNS Records</div>
+        <div class="card-body">
+          ${Object.entries(records).map(([type, vals]) =>
+            `<div class="dns-record-row">
+              <span class="dns-type">${type}</span>
+              <span class="dns-vals">${vals.slice(0,5).join("<br/>")}</span>
+            </div>`).join("") || "<p style='color:var(--text-muted)'>No records found.</p>"}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><i class="fas fa-sitemap"></i> Subdomains (${(result.subdomains||[]).length})</div>
+        <div class="card-body p-0">
+          ${result.subdomains && result.subdomains.length ?
+            `<table class="data-table">
+              <thead><tr><th>Subdomain</th><th>IP</th></tr></thead>
+              <tbody>${result.subdomains.map(s =>
+                `<tr><td><code>${s.subdomain}</code></td><td>${s.ip}</td></tr>`).join("")}
+              </tbody>
+            </table>` : `<div class="empty-state"><i class="fas fa-search"></i><p>No subdomains found.</p></div>`}
+        </div>
+      </div>
+    </div>
+    ${(result.findings||[]).length ? `<div class="card mt-3">
+      <div class="card-header"><i class="fas fa-bug"></i> DNS Security Findings</div>
+      <div class="card-body">${renderFindingsTab(result.findings)}</div>
+    </div>` : ""}
+    ${result.whois && !result.whois.error ? `
+      <div class="card mt-3">
+        <div class="card-header"><i class="fas fa-id-card"></i> WHOIS Information</div>
+        <div class="card-body">
+          ${kvRow("Registrar", result.whois.registrar)}
+          ${kvRow("Created", result.whois.creation_date)}
+          ${kvRow("Expires", result.whois.expiry_date)}
+          ${kvRow("Country", result.whois.country)}
+          ${kvRow("Organization", result.whois.org)}
+          ${kvRow("Name Servers", (result.whois.name_servers||[]).slice(0,4).join(", "))}
+        </div>
+      </div>` : ""}`;
+}
+
+function riskBadge(risk) {
+  const cls = {CRITICAL:"sev-critical",HIGH:"sev-high",MEDIUM:"sev-medium",LOW:"sev-low",INFO:"sev-info"};
+  return `<span class="severity-badge ${cls[risk]||'sev-info'}">${risk||'INFO'}</span>`;
+}
+function riskBadgeLg(risk) {
+  const cls = {CRITICAL:"sev-critical",HIGH:"sev-high",MEDIUM:"sev-medium",LOW:"sev-low",INFO:"sev-info"};
+  return `<span class="severity-badge sev-lg ${cls[risk]||'sev-info'}">${risk||'N/A'}</span>`;
+}
+function kvRow(k, v) {
+  if (!v && v !== 0) return "";
+  return `<div class="kv-row"><span class="kv-key">${k}</span><span class="kv-val">${v}</span></div>`;
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+async function downloadReport(type) {
+  if (!currentResult) { showNotification("No scan results to export.", "error"); return; }
+  showNotification(`Generating ${type.toUpperCase()} report...`, "info");
+  const resp = await fetch(`/api/report/${type}`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({scan_data: currentResult})
+  });
+  if (!resp.ok) { showNotification("Report generation failed.", "error"); return; }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `vapt_report.${type}`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showNotification(`${type.toUpperCase()} report downloaded!`, "success");
+}
+</script>
+{% endblock %}

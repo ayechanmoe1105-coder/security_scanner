@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Reports — VAPT Platform{% endblock %}
+{% block page_title %}Reports{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header"><i class="fas fa-file-shield"></i> Generate Security Report</div>
+  <div class="card-body">
+    <p style="color:var(--text-secondary);margin-bottom:16px">
+      Select a scan from your history and export a professional PDF or JSON security report.
+      Reports include executive summary, risk matrix, findings with CVEs, and remediation guidance.
+    </p>
+    <div class="reports-grid">
+      <div class="report-type-card" onclick="selectReportType('pdf', this)">
+        <div class="report-type-icon red"><i class="fas fa-file-pdf"></i></div>
+        <div class="report-type-title">PDF Report</div>
+        <div class="report-type-desc">Professional security assessment with risk matrix, findings, and remediation steps. Suitable for management and clients.</div>
+      </div>
+      <div class="report-type-card" onclick="selectReportType('json')">
+        <div class="report-type-icon blue"><i class="fas fa-file-code"></i></div>
+        <div class="report-type-title">JSON Export</div>
+        <div class="report-type-desc">Machine-readable structured data for integration with other security tools, SIEM, or ticketing systems.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-4">
+  <div class="card-header"><i class="fas fa-list"></i> Select Scan to Export</div>
+  <div class="card-body p-0" id="reportHistoryContainer">
+    <div class="empty-state">
+      <i class="fas fa-spinner fa-spin"></i>
+      <p>Loading scan history...</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let reportType = "pdf";
+let selectedScanId = null;
+
+document.addEventListener("DOMContentLoaded", loadReportHistory);
+
+function selectReportType(t, el) {
+  reportType = t;
+  document.querySelectorAll(".report-type-card").forEach(c => c.classList.remove("active"));
+  if (el) el.classList.add("active");
+  showNotification(`Report format set to ${t.toUpperCase()}`, "info");
+}
+
+function loadReportHistory() {
+  const c = document.getElementById("reportHistoryContainer");
+  fetch("/api/history")
+    .then(r => {
+      if (!r.ok) throw new Error("Failed to load history");
+      return r.json();
+    })
+    .then(data => {
+      if (!data.length) {
+        c.innerHTML = `<div class="empty-state">
+          <i class="fas fa-clock-rotate-left"></i>
+          <p>No scans yet. Run a scan first.</p>
+          <a href="{{ url_for('scanner') }}" class="btn btn-primary mt-2">Go to Scanner</a>
+        </div>`;
+        return;
+      }
+      c.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr><th>Target</th><th>Type</th><th>Risk</th><th>Findings</th><th>Date</th><th>Export</th></tr>
+          </thead>
+          <tbody>
+            ${data.map(s => `
+              <tr>
+                <td><code>${s.target}</code></td>
+                <td><span class="badge badge-type">${s.type}</span></td>
+                <td>${riskBadge(s.overall_risk)}</td>
+                <td>${s.total_findings}</td>
+                <td>${s.timestamp}</td>
+                <td style="display:flex;gap:6px">
+                  <button class="btn btn-sm btn-primary" onclick="exportReport(${s.id}, 'pdf')">
+                    <i class="fas fa-file-pdf"></i> PDF
+                  </button>
+                  <button class="btn btn-sm btn-ghost" onclick="exportReport(${s.id}, 'json')">
+                    <i class="fas fa-file-code"></i> JSON
+                  </button>
+                </td>
+              </tr>`).join("")}
+          </tbody>
+        </table>`;
+    })
+    .catch(() => {
+      c.innerHTML = `<div class="empty-state">
+        <i class="fas fa-triangle-exclamation"></i>
+        <p>Could not load scan history. Check that the app is running and refresh.</p>
+      </div>`;
+    });
+}
+
+async function exportReport(id, type) {
+  showNotification(`Generating ${type.toUpperCase()} report...`, "info");
+  const entry = await fetch(`/api/history/${id}`).then(r => r.json());
+  const resp = await fetch(`/api/report/${type}`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({scan_data: entry.result})
+  });
+  if (!resp.ok) { showNotification("Failed to generate report.", "error"); return; }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `vapt_report_${entry.target.replace(/[^a-z0-9]/gi,'_')}.${type}`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showNotification(`${type.toUpperCase()} report downloaded!`, "success");
+}
+
+function riskBadge(risk) {
+  const cls = {CRITICAL:"sev-critical",HIGH:"sev-high",MEDIUM:"sev-medium",LOW:"sev-low",INFO:"sev-info"};
+  return `<span class="severity-badge ${cls[risk]||'sev-info'}">${risk||'INFO'}</span>`;
+}
+</script>
+{% endblock %}

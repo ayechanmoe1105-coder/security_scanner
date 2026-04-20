@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}VAPT Platform{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon"><i class="fas fa-shield-halved"></i></div>
+      <div class="logo-text">
+        <span class="logo-title">VAPT</span>
+        <span class="logo-sub">Security Platform</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a href="{{ url_for('index') }}" class="nav-item {% if request.path == '/' %}active{% endif %}">
+        <i class="fas fa-gauge-high"></i><span>Dashboard</span>
+      </a>
+      <a href="{{ url_for('scanner') }}" class="nav-item {% if request.path == '/scanner' %}active{% endif %}">
+        <i class="fas fa-radar"></i><span>Scanner</span>
+      </a>
+
+      <div class="nav-section-label">Results</div>
+      <a href="{{ url_for('history_page') }}" class="nav-item {% if request.path == '/history-page' %}active{% endif %}">
+        <i class="fas fa-clock-rotate-left"></i><span>History</span>
+      </a>
+      <a href="{{ url_for('reports_page') }}" class="nav-item {% if request.path == '/reports-page' %}active{% endif %}">
+        <i class="fas fa-file-shield"></i><span>Reports</span>
+      </a>
+
+      <div class="nav-section-label">Info</div>
+      <div class="nav-item disclaimer-toggle" onclick="toggleDisclaimer()">
+        <i class="fas fa-triangle-exclamation"></i><span>Disclaimer</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="status-dot active"></div>
+      <span>System Online</span>
+    </div>
+  </aside>
+
+  <!-- Mobile overlay -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Main content -->
+  <div class="main-wrapper">
+    <header class="topbar">
+      <button class="menu-btn" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+      </button>
+      <div class="topbar-title">{% block page_title %}Dashboard{% endblock %}</div>
+      <div class="topbar-right">
+        <div class="badge-ethical">
+          <i class="fas fa-user-shield"></i> Ethical Use Only
+        </div>
+        <div class="topbar-time" id="topbarTime"></div>
+      </div>
+    </header>
+
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- Disclaimer Modal -->
+  <div class="modal-overlay disclaimer-modal" id="disclaimerModal">
+    <div class="modal-box">
+      <div class="modal-header danger">
+        <i class="fas fa-triangle-exclamation"></i>
+        <h3>Legal Disclaimer & Ethical Use</h3>
+      </div>
+      <div class="modal-body">
+        <p>This <strong>Vulnerability Assessment & Penetration Testing (VAPT)</strong> platform is developed strictly for:</p>
+        <ul>
+          <li>Authorized security testing on systems you own or have explicit written permission to test</li>
+          <li>Educational and research purposes in controlled environments</li>
+          <li>Academic coursework and cybersecurity training</li>
+        </ul>
+        <div class="warning-box">
+          <i class="fas fa-gavel"></i>
+          <div>
+            <strong>Unauthorized use is illegal.</strong> Scanning systems without permission may violate the Computer Fraud and Abuse Act (CFAA), GDPR, and other laws. The developers assume no liability for misuse.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeDisclaimer()">
+          <i class="fas fa-check"></i> I Understand — Proceed Responsibly
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {# Local Socket.IO client — avoids blank/hung pages when CDN is blocked (school networks, Thonny, etc.). #}
+  <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
